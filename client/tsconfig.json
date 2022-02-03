@@ -1,0 +1,46 @@
+{
+  "compilerOptions": {
+    "paths": {
+      "crypto": [
+        "./node_modules/crypto-browserify"
+      ],
+      "stream": [
+        "./node_modules/stream-browserify"
+      ],
+      "assert": [
+        "./node_modules/assert"
+      ],
+      "http": [
+        "./node_modules/stream-http"
+      ],
+      "https": [
+        "./node_modules/https-browserify"
+      ],
+      "os": [
+        "./node_modules/os-browserify"
+      ],
+    },
+    "target": "es5",
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "esnext"
+    ],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "strict": true,
+    "forceConsistentCasingInFileNames": true,
+    "noFallthroughCasesInSwitch": true,
+    "module": "esnext",
+    "moduleResolution": "node",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "jsx": "react-jsx"
+  },
+  "include": [
+    "src"
+  ]
+}
