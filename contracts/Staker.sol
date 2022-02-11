@@ -28,6 +28,9 @@ contract Staker is Ownable {
     // array of users who have staked
     address[] public stakers;
 
+    // quickly lookup if a user has staked before
+    mapping(address => bool) private _userHasStaked;
+
     // minimum required amount for staking to be complete
     uint256 private constant _threshold = 1 ether;
 
@@ -68,7 +71,11 @@ contract Staker is Ownable {
     }
 
     function _stake() private onlyWhenOpen {
-        stakers.push(msg.sender);
+        if (_userHasStaked[msg.sender] == false) {
+            stakers.push(msg.sender);
+            _userHasStaked[msg.sender] = true;
+        }
+
         stakedBalances[msg.sender] += msg.value;
 
         emit Staked(msg.sender, msg.value);
@@ -102,7 +109,7 @@ contract Staker is Ownable {
         (bool success, ) = address(msg.sender).call{value: stakedAmount}("");
         require(success, "unable to complete withdrawal");
 
-        delete stakedBalances[msg.sender];
+        stakedBalances[msg.sender] = 0;
 
         emit Withdraw(msg.sender, stakedAmount);
     }
@@ -120,7 +127,9 @@ contract Staker is Ownable {
         _transfer(_completionContractAddress, balance);
 
         for (uint256 i = 0; i < stakers.length; i++) {
-            delete stakedBalances[stakers[i]];
+            // delete stakedBalances[stakers[i]];
+            stakedBalances[stakers[i]] = 0;
+            _userHasStaked[stakers[i]] = false;
         }
 
         stakers = new address[](0);
