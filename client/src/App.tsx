@@ -1,55 +1,98 @@
-import React, { useState, useEffect } from 'react';
-import SimpleStorageContract from './contracts/SimpleStorage.json';
+import { useEffect, useState, useContext } from 'react';
+import Staker from './contracts/Staker.json';
+import { Contract } from 'web3-eth-contract';
 import getWeb3 from './getWeb3';
 import { AbiItem } from 'web3-utils';
-
-import './App.css';
+import { createTheme, ThemeProvider } from '@mui/material/styles';
+import { Box, Container, CssBaseline, Tab, Tabs } from '@mui/material';
+import TabPanel from './components/ui/TabPanel';
+import { ConnectingWallet } from './components/wallet';
+import { StakingDashboard } from './components/staking';
+import { ManagementDashboard } from './components/management';
+import PastRecipients from './components/PastRecipients';
+import { AppContext } from './context';
 
 function App() {
 
-  const [storageValue, setStorageValue] = useState(null as string | null);
-  const [newValue, setNewValue] = useState("");
+  const { dapp } = useContext(AppContext);
+  const [networkId, setNetworkId] = useState<number>(-1);
+  const [accounts, setAccounts] = useState<Array<string>>([]);
+  const [stakerContract, setStakerContract] = useState<Contract | null>(null);
+  const [selectedTabIndex, setSelectedTabIndex] = useState<number>(0);
 
   useEffect(() => {
     const web3Init = async () => {
       const web3 = await getWeb3();
       const accounts = await web3.eth.getAccounts();
       const networkId = await web3.eth.net.getId();
-      const deployedNetwork = (SimpleStorageContract.networks as any)[networkId];
+      const deployedNetwork = (Staker.networks as any)[networkId];
 
       const contract = new web3.eth.Contract(
-        SimpleStorageContract.abi as AbiItem[],
+        Staker.abi as AbiItem[],
         deployedNetwork?.address,
       );
-      // console.log(instance);
-      // await instance.methods.set("biscuit").send({ from: accounts[0] });
 
-      const response = await contract.methods.get().call();
-      setStorageValue(response);
+      // set network
+      dapp.setNetworkId(networkId);
+      setNetworkId(networkId);
+
+      // set accounts
+      dapp.setAccounts(accounts);
+      setAccounts(accounts);
+
+      // set staker contract
+      dapp.setStakerContract(contract);
+      setStakerContract(contract);
     };
     web3Init().catch(console.log);
-  }, []);
+  });
 
-  const handleSubmit = (e: React.SyntheticEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    // console.log(accounts);
+  const isApplicationLoaded = () => {
+    return (stakerContract && accounts.length > 0);
+  }
+
+  function a11yProps(index: number) {
+    return {
+      id: `dapp-tab-${index}`,
+      'aria-controls': `dapp-tabpanel-${index}`,
+    };
+  }
+
+  const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
+    setSelectedTabIndex(newValue);
   };
 
+  let theme = createTheme();
+
   return (
-    <>
-      {!storageValue && <div>Loading Web3, accounts, and contract...</div>}
-      {storageValue && (
-        <div className="App">
-          <h1>Good to Go!</h1>
-          <h2>Simple Storage</h2>
-          <div>The stored value is: {storageValue}</div>
-          <form onSubmit={handleSubmit}>
-            <input type="text" value={newValue} />
-            <input type="submit" />
-          </form>
-        </div>
-      )}
-    </>
+    <ThemeProvider theme={theme}>
+      <Container component="main" maxWidth="xs" sx={{ backgroundColor: "#f3f3f3" }}>
+        <CssBaseline />
+        <Box sx={{ marginTop: 2, py: 2 }}>
+          {!isApplicationLoaded() && <ConnectingWallet />}
+          {isApplicationLoaded() && (
+            <>
+              <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
+                <Tabs value={selectedTabIndex} onChange={handleTabChange} aria-label="staking dapp tabs">
+                  <Tab label="Staking" {...a11yProps(0)} />
+                  <Tab label="Management" {...a11yProps(1)} />
+                  <Tab label="Past Recipients" {...a11yProps(2)} />
+                </Tabs>
+              </Box>
+              <TabPanel value={selectedTabIndex} index={0}>
+                <StakingDashboard />
+              </TabPanel>
+              <TabPanel value={selectedTabIndex} index={1}>
+                <ManagementDashboard />
+              </TabPanel>
+              <TabPanel value={selectedTabIndex} index={2}>
+                <PastRecipients />
+              </TabPanel>
+            </>
+          )}
+        </Box>
+      </Container>
+    </ThemeProvider>
   );
 }
 

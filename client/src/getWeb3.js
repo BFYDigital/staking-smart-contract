@@ -12,6 +12,13 @@ const getWeb3 = () =>
           await window.ethereum.enable();
           // Accounts now exposed
           resolve(web3);
+          // listen for account or network change
+          window.ethereum.on('chainChanged', () => {
+            window.location.reload();
+          });
+          window.ethereum.on('accountsChanged', () => {
+            window.location.reload();
+          });
         } catch (error) {
           reject(error);
         }
