@@ -1,18 +1,33 @@
 import React, { useState, useEffect, useContext } from 'react';
-import { Box, Button, Divider, Stack, Snackbar, TextField } from '@mui/material';
-import { Cancel, Done, ThumbUpAlt, RestartAlt } from '@mui/icons-material';
+import { Alert, AlertColor, AlertTitle, Box, Divider, Snackbar, Stack, Typography } from '@mui/material';
+import { LoadingButton } from '@mui/lab';
+import { Cancel, Close, Done, RestartAlt } from '@mui/icons-material';
 import { AppContext } from '../../context';
 import StakingStatusIndicator from '../staking/StakingStatusIndicator';
+import Web3 from 'web3';
+import BN from 'bn.js';
+import { ISnackbarMessage } from '../../interfaces';
+import helpers from '../../utils/helpers';
+
+interface IState {
+  isCompleting: boolean | undefined;
+  isClosing: boolean | undefined;
+  isRestarting: boolean | undefined;
+  isTerminating: boolean | undefined;
+}
 
 export default function ManagementDashboard() {
-
-  const DEFAULT_ADDERSS = '0x0';
   const { dapp } = useContext(AppContext);
   const [isOwner, setIsOwner] = useState<boolean>(false);
   const [ownerAddress, setOwnerAddress] = useState<string>('');
   const [stakingStatus, setStakingStatus] = useState<number>(0);
   const [triggerRerender, setTriggerRerender] = useState<boolean>(false);
-  const [awardeeAddress, setAwardeeAddress] = useState<string>(DEFAULT_ADDERSS);
+  const [state, setState] = useState<IState>(
+    { isCompleting: false, isClosing: false, isRestarting: false, isTerminating: false });
+  const [stakedBalance, setStakedBalance] = useState<string>('0');
+  const [thresholdReached, setThresholdReached] = useState<boolean>(false);
+  const [snackbarMessage, setSnackbarMessage] =
+    useState<ISnackbarMessage>({ isOpen: false, severity: 'success', message: '' });
 
   const updateStakingStatus = async (): Promise<void> => {
     let _stakingStatus: number = parseInt(await dapp.stakerContract?.methods.getStatus().call());
@@ -33,97 +48,209 @@ export default function ManagementDashboard() {
   }, []);
 
   useEffect(() => {
+    const getStakedBalance = async () => {
+      // get total amount staked
+      let _stakedBalance = Web3.utils.fromWei(
+        await dapp.stakerContract?.methods.getTotalStakedAmount().call(), 'ether');
+      setStakedBalance(_stakedBalance);
+
+      // check if staking threshold has been reached
+      let _thresholdReached = new BN(_stakedBalance)
+        .gte(new BN(1));
+      setThresholdReached(_thresholdReached);
+    };
+    getStakedBalance().catch(console.log);
+
     updateStakingStatus();
   }, [triggerRerender]);
 
-  const completeStakingAction = async (): Promise<void> => {
-    await dapp.stakerContract?.methods.completeStaking().send({ from: dapp.accounts[0] });
-    setTriggerRerender(!triggerRerender);
+  const completeStakingAction = (): void => {
+
+    if (!thresholdReached) {
+      // display snackbar with warning message
+      openSnackBar('warning', 'Cannot complete staking. Threshold has not been reached');
+      return;
+    }
+
+    setState({ ...state, isCompleting: true });
+    dapp.stakerContract?.methods.completeStaking().send({ from: dapp.accounts[0] })
+      .then(() => {
+        // display snackbar with success message
+        openSnackBar('success', 'Staking completed. BFY Tokens have been awarded');
+      })
+      .catch((error: Error) => {
+        // extract reason and display snackbar with error message
+        let reason = helpers.extractTruffleErrorMessage(error);
+        openSnackBar('error', `unable to close staking. Reason: ${reason}`);
+      })
+      .finally(() => {
+        setState({ ...state, isCompleting: false });
+        setTriggerRerender(!triggerRerender);
+      });
   };
 
-  const closeStakingAction = async (): Promise<void> => {
-    await dapp.stakerContract?.methods.closeStaking().send({ from: dapp.accounts[0] });
-    setTriggerRerender(!triggerRerender);
+  const closeStakingAction = (): void => {
+    setState({ ...state, isClosing: true });
+    dapp.stakerContract?.methods.closeStaking().send({ from: dapp.accounts[0] })
+      .then(() => {
+        // display snackbar with info message
+        openSnackBar('info', 'Staking has been closed. Stakers can now withdraw their ETH');
+      })
+      .catch((error: Error) => {
+        // extract reason and display snackbar with error message
+        let reason = helpers.extractTruffleErrorMessage(error);
+        openSnackBar('error', `unable to close staking. Reason: ${reason}`);
+      })
+      .finally(() => {
+        setState({ ...state, isClosing: false });
+        setTriggerRerender(!triggerRerender);
+      });
   };
 
-  const restartStakingAction = async (): Promise<void> => {
-    await dapp.stakerContract?.methods.restartStaking().send({ from: dapp.accounts[0] });
-    setTriggerRerender(!triggerRerender);
+  const restartStakingAction = (): void => {
+    setState({ ...state, isRestarting: true });
+    dapp.stakerContract?.methods.restartStaking().send({ from: dapp.accounts[0] })
+      .then(() => {
+        // display snackbar with info message
+        openSnackBar('success', 'Staking has successfully been restarted.');
+      })
+      .catch((error: Error) => {
+        // extract reason and display snackbar with error message
+        let reason = helpers.extractTruffleErrorMessage(error);
+        openSnackBar('error', `unable to close staking. Reason: ${reason}`);
+      })
+      .finally(() => {
+        setState({ ...state, isRestarting: false });
+        setTriggerRerender(!triggerRerender);
+      });
   };
 
-  const handleAwardeeAddressChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    setAwardeeAddress(event.target.value);
+  const terminateContractAction = (): void => {
+    setState({ ...state, isTerminating: true });
+    dapp.stakerContract?.methods.terminateContract().send({ from: dapp.accounts[0] })
+      .then(() => {
+        // display snackbar with info message
+        openSnackBar('warning', `
+        Staking has been terminated! 
+        This contract is no longer the owner of the BFY Token contract!`);
+      })
+      .catch((error: Error) => {
+        // extract reason and display snackbar with error message
+        let reason = helpers.extractTruffleErrorMessage(error);
+        openSnackBar('error', `unable to close staking. Reason: ${reason}`);
+      })
+      .finally(() => {
+        setState({ ...state, isTerminating: false });
+        setTriggerRerender(!triggerRerender);
+      });
   };
 
-  const rewardStakeAction = async (): Promise<void> => {
-    await dapp.stakerContract?.methods
-      .awardStakedBalance(awardeeAddress)
-      .send({ from: dapp.accounts[0] });
+  const canCompleteSkating = (): boolean => {
+    return (stakingStatus == 0); // 0 -> StakingStatus.OPEN
+  };
 
-    setAwardeeAddress(DEFAULT_ADDERSS);
-    setTriggerRerender(!triggerRerender);
+  const canCloseStaking = (): boolean => {
+    return canCompleteSkating();
+  }
+
+  const canRestartStaking = (): boolean => {
+    return (stakingStatus == 1 || stakingStatus == 2);
+  };
+
+  const canTerminateContract = (): boolean => {
+    return canRestartStaking();
+  };
+
+  const openSnackBar = (type: AlertColor, message: string): void => {
+    setSnackbarMessage({ isOpen: true, severity: type, message: message });
+  }
+
+  const handleSnackbarClose = () => {
+    setSnackbarMessage({ ...snackbarMessage, isOpen: false });
   };
 
   return (
     <>
-      {!isOwner && <div>ONLY THE OWNER CAN USE THIS PANEL</div>}
-      {isOwner &&
-        <Box sx={{ my: 1 }}>
-          <Stack spacing={2}>
-            <StakingStatusIndicator status={stakingStatus} />
-            <Divider />
-            <Button
-              onClick={completeStakingAction} type="button"
-              variant="outlined"
-              color="primary"
-              startIcon={<Done />}
-            >
-              Complete Staking
-            </Button>
+      <Box sx={{ my: 1 }}>
+        {!isOwner &&
+          <>
+            <Alert severity="error">
+              <AlertTitle>Error</AlertTitle>
+              ONLY THE <strong>OWNER</strong> CAN USE THIS PANEL
+            </Alert>
+          </>}
+        {isOwner &&
+          <>
+            <Snackbar open={snackbarMessage.isOpen} autoHideDuration={6000} onClose={handleSnackbarClose}>
+              <Alert onClose={handleSnackbarClose} severity={snackbarMessage.severity} sx={{ width: '100%' }}>
+                {snackbarMessage.message}
+              </Alert>
+            </Snackbar>
+            <Stack spacing={2} sx={{ my: 2 }}>
+              <StakingStatusIndicator status={stakingStatus} />
+              <Divider />
+              <Typography style={{ fontWeight: 'bold' }} variant="subtitle1" align="center">
+                update staking status
+              </Typography>
+            </Stack>
+            <Stack alignItems="center" justifyContent="center" spacing={2} direction="row">
+              <LoadingButton
+                onClick={completeStakingAction}
+                loading={state.isCompleting}
+                disabled={!canCompleteSkating()}
+                type="button"
+                variant="contained"
+                color="primary"
+                size="medium"
+                startIcon={<Done />}
+              >Complete</LoadingButton>
 
-            <Button
-              onClick={closeStakingAction} type="button"
-              variant="outlined"
-              color="error"
-              startIcon={<Cancel />}
-            >
-              Close Staking
-            </Button>
+              <LoadingButton
+                onClick={closeStakingAction}
+                loading={state.isClosing}
+                disabled={!canCloseStaking()}
+                type="button"
+                variant="contained"
+                color="warning"
+                size="medium"
+                startIcon={<Close />}
+              >Close</LoadingButton>
 
-            <Button
-              onClick={restartStakingAction} type="button"
-              variant="outlined"
-              color="secondary"
-              startIcon={<RestartAlt />}
-            >
-              Restart Staking
-            </Button>
-          </Stack>
-          <Divider />
-          <Box sx={{ my: 1 }}>
-            <TextField
-              onChange={handleAwardeeAddressChange}
-              value={awardeeAddress}
-              margin="normal"
-              required
-              fullWidth
-              id="stakeAmount"
-              label="Amount"
-              name="stakeAmount"
-              autoFocus
-            />
-            <Button
-              onClick={rewardStakeAction} type="button"
-              variant="contained"
-              size="large"
-              color="success"
-              startIcon={<ThumbUpAlt />}
-            >
-              Award Address
-            </Button>
-          </Box>
-        </Box>
-      }
+              <LoadingButton
+                onClick={restartStakingAction}
+                loading={state.isRestarting}
+                disabled={!canRestartStaking()}
+                type="button"
+                variant="contained"
+                color="secondary"
+                size="medium"
+                startIcon={<RestartAlt />}
+              >Restart</LoadingButton>
+            </Stack>
+
+            <Stack sx={{ mt: 2 }} spacing={2}>
+              <Divider />
+
+              <LoadingButton
+                onClick={terminateContractAction}
+                disabled={!canTerminateContract()}
+                type="button"
+                variant="contained"
+                color="error"
+                size="large"
+                startIcon={<Cancel />}
+              >
+                Terminate Contract
+              </LoadingButton>
+
+              <Typography variant="subtitle1" align="center">
+                warning! terminating the contract will move ownership
+                of BFY Token to the owner of this contract <strong>({ownerAddress})</strong>
+              </Typography>
+            </Stack>
+          </>
+        }
+      </Box>
     </>
   );
 }
