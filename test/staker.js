@@ -1,5 +1,4 @@
 const { assert } = require("chai");
-const BFYToken = artifacts.require("BFYToken");
 const Staker = artifacts.require("Staker");
 
 contract("Staker", function (accounts) {
@@ -8,8 +7,7 @@ contract("Staker", function (accounts) {
   let staker;
 
   beforeEach(async () => {
-    bfyToken = await BFYToken.new();
-    staker = await Staker.new(bfyToken.address);
+    staker = await Staker.new();
   });
 
   it("should allow user to skate when status is open", async () => {
@@ -181,7 +179,7 @@ contract("Staker", function (accounts) {
 
   it("should allow owner to redeem staked balance", async () => {
     // arrange
-    let amount = web3.utils.toWei('10', 'ether');
+    let amount = web3.utils.toWei('1', 'ether');
 
     // act
     await staker.stake({ from: accounts[1], value: amount });
@@ -197,7 +195,7 @@ contract("Staker", function (accounts) {
 
   it("should not allow a non-owner to redeem staked balance", async () => {
     // arrange
-    let amount = web3.utils.toWei('10', 'ether');
+    let amount = web3.utils.toWei('1', 'ether');
 
     // act
     await staker.stake({ from: accounts[1], value: amount });
@@ -210,7 +208,7 @@ contract("Staker", function (accounts) {
 
   it("should not allow owner to redeem staked balance when staking is not complete", async () => {
     // arrange
-    let amount = web3.utils.toWei('10', 'ether');
+    let amount = web3.utils.toWei('1', 'ether');
 
     // act
     await staker.stake({ from: accounts[1], value: amount });
@@ -218,5 +216,48 @@ contract("Staker", function (accounts) {
     // assert
     await Exception.tryCatch(
       staker.redeemStakedAmount({ from: accounts[0] }), Exception.errTypes.onlyWhenComplete);
+  });
+
+  it("should give correct number of tokens to award", async () => {
+    // arrange
+    let expected1 = '500';
+    let expected2 = '1000';
+    let halfEther = web3.utils.toWei('0.5', 'ether');
+    let oneEther = web3.utils.toWei('1', 'ether');
+
+    // act
+    let actual1 = web3.utils
+      .fromWei(await staker._getTokenNumToAward(halfEther, { from: accounts[0] }), 'ether');
+    let actual2 = web3.utils
+      .fromWei(await staker._getTokenNumToAward(oneEther, { from: accounts[0] }), 'ether');
+
+    // assert
+    assert.equal(actual1, expected1);
+    assert.equal(actual2, expected2);
+  });
+
+  it("should award stakers BFYTokens on staking completion", async () => {
+    // arrange
+    let user1Amount = web3.utils.toWei('1', 'ether');
+    let user2Amount = web3.utils.toWei('0.5', 'ether');
+    let user3Amount = web3.utils.toWei('0.025', 'ether');
+
+    // act
+    await staker.stake({ from: accounts[0], value: user1Amount });
+    await staker.stake({ from: accounts[1], value: user2Amount });
+    await staker.stake({ from: accounts[2], value: user3Amount });
+    await staker.completeStaking({ from: accounts[0] });
+
+    let actual1 = web3.utils.fromWei(await staker.tokenBalanceOf(accounts[0]), 'ether');
+    let actual2 = web3.utils.fromWei(await staker.tokenBalanceOf(accounts[1]), 'ether');
+    let actual3 = web3.utils.fromWei(await staker.tokenBalanceOf(accounts[2]), 'ether');
+
+    // // assert
+    assert.equal(actual1, '1000');
+    assert.notEqual(actual1, '500');
+    assert.equal(actual2, '500');
+    assert.notEqual(actual2, '1000');
+    assert.equal(actual3, '25');
+    assert.notEqual(actual3, '500');
   });
 });
