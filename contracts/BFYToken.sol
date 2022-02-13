@@ -7,6 +7,6 @@ import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 contract BFYToken is Ownable, ERC20 {
     constructor() ERC20("BFY Token", "BFY") {
-        _mint(msg.sender, 10000 * 10**decimals());
+        _mint(msg.sender, 10000 * 10**uint256(decimals()));
     }
 }
