@@ -10,31 +10,39 @@ contract Staker is Ownable {
     enum StakingStatus {
         OPEN,
         CLOSED,
-        COMPLETED
+        COMPLETED,
+        TERMINATED
     }
 
     StakingStatus public status;
 
     // emitted when a user has staked ETH
     event Staked(address indexed _from, uint256 _value);
+
     // emitted wehen a user withdraws ETH
     event Withdraw(address indexed _from, uint256 _value);
+
     // emitted when owner 'completes' staking
     // only done when threshold has been reached
     event StakingCompleted(uint256 _amountStaked);
+
     // to keep track of the amount each user staked
     mapping(address => uint256) public stakedBalances;
+
     // array of users who have staked
     address[] public stakers;
+
     // quickly lookup if a user has staked before
     mapping(address => bool) private _userHasStaked;
+
     // minimum required amount for staking to be complete
     uint256 private constant _threshold = 1 ether;
+
     // the token to award stakers
     BFYToken private _bfyToken;
 
-    constructor(address _tokenAddress) {
-        _bfyToken = BFYToken(_tokenAddress);
+    constructor() {
+        _bfyToken = new BFYToken();
         status = StakingStatus.OPEN;
     }
 
@@ -117,7 +125,7 @@ contract Staker is Ownable {
     }
 
     function completeStaking() public onlyOwner {
-        uint256 balance = address(this).balance;
+        uint256 balance = getTotalStakedAmount();
 
         // check if threshold has been reached
         require(
@@ -125,8 +133,12 @@ contract Staker is Ownable {
             "staked amount has not reached threshold"
         );
 
-        // reset staked balances to 0
+        // award BFYTokens as reward and
+        // reset staked balances to zero
         for (uint256 i = 0; i < stakers.length; i++) {
+            uint256 amount = _getTokenNumToAward(stakedBalances[stakers[i]]);
+            _bfyToken.transfer(stakers[i], amount);
+
             stakedBalances[stakers[i]] = 0;
             _userHasStaked[stakers[i]] = false;
         }
@@ -136,6 +148,16 @@ contract Staker is Ownable {
         status = StakingStatus.COMPLETED;
 
         emit StakingCompleted(balance);
+    }
+
+    // TODO: make this function private during deployment
+    function _getTokenNumToAward(uint256 _amount)
+        public
+        pure
+        returns (uint256)
+    {
+        uint256 amount = 1000 * _amount;
+        return amount;
     }
 
     function getStatus() public view returns (uint8) {
@@ -162,5 +184,14 @@ contract Staker is Ownable {
     function _transfer(address payable _to, uint256 _amount) private {
         (bool success, ) = _to.call{value: _amount}("");
         require(success, "failed to send Ether");
+    }
+
+    function terminateContract() external onlyOwner {
+        _bfyToken.transferOwnership(owner());
+        status = StakingStatus.TERMINATED;
+    }
+
+    function tokenBalanceOf(address _account) public view returns (uint256) {
+        return _bfyToken.balanceOf(_account);
     }
 }
