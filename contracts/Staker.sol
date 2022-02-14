@@ -3,8 +3,7 @@
 pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
-import "./CompletionContract.sol";
-import "./ReceiverStruct.sol";
+import "./BFYToken.sol";
 
 /** @title Staker */
 contract Staker is Ownable {
@@ -12,15 +11,20 @@ contract Staker is Ownable {
         OPEN,
         CLOSED,
         COMPLETED,
-        AWARDED
+        TERMINATED
     }
 
     StakingStatus public status;
 
+    // emitted when a user has staked ETH
     event Staked(address indexed _from, uint256 _value);
+
+    // emitted wehen a user withdraws ETH
     event Withdraw(address indexed _from, uint256 _value);
+
+    // emitted when owner 'completes' staking
+    // only done when threshold has been reached
     event StakingCompleted(uint256 _amountStaked);
-    event Awarded(address _to, uint256 _value);
 
     // to keep track of the amount each user staked
     mapping(address => uint256) public stakedBalances;
@@ -34,14 +38,11 @@ contract Staker is Ownable {
     // minimum required amount for staking to be complete
     uint256 private constant _threshold = 1 ether;
 
-    // the contract to send ethereum to when threshold has been reached
-    CompletionContract public completionContract;
-
-    address payable private _completionContractAddress;
+    // the token to award stakers
+    BFYToken private _bfyToken;
 
     constructor() {
-        completionContract = new CompletionContract();
-        _completionContractAddress = payable(address(completionContract));
+        _bfyToken = new BFYToken();
         status = StakingStatus.OPEN;
     }
 
@@ -50,11 +51,16 @@ contract Staker is Ownable {
         _;
     }
 
-    modifier onlyWhenCompleted() {
+    modifier onlyWhenComplete() {
         require(
             status == StakingStatus.COMPLETED,
             "staking is currently not complete"
         );
+        _;
+    }
+
+    modifier whenNotOpen() {
+        require(status != StakingStatus.OPEN, "staking must not be open");
         _;
     }
 
@@ -119,28 +125,39 @@ contract Staker is Ownable {
     }
 
     function completeStaking() public onlyOwner {
-        uint256 balance = address(this).balance;
+        uint256 balance = getTotalStakedAmount();
+
+        // check if threshold has been reached
         require(
             balance >= _threshold,
             "staked amount has not reached threshold"
         );
-        _transfer(_completionContractAddress, balance);
 
+        // award BFYTokens as reward and
+        // reset staked balances to zero
         for (uint256 i = 0; i < stakers.length; i++) {
-            // delete stakedBalances[stakers[i]];
+            uint256 amount = _getTokenNumToAward(stakedBalances[stakers[i]]);
+            _bfyToken.transfer(stakers[i], amount);
+
             stakedBalances[stakers[i]] = 0;
             _userHasStaked[stakers[i]] = false;
         }
 
+        // clear stakers and mark staking status as complete
         stakers = new address[](0);
         status = StakingStatus.COMPLETED;
 
         emit StakingCompleted(balance);
     }
 
-    function _transfer(address payable _to, uint256 _amount) private {
-        (bool success, ) = _to.call{value: _amount}("");
-        require(success, "failed to send Ether");
+    // TODO: make this function private during deployment
+    function _getTokenNumToAward(uint256 _amount)
+        public
+        pure
+        returns (uint256)
+    {
+        uint256 amount = 1000 * _amount;
+        return amount;
     }
 
     function getStatus() public view returns (uint8) {
@@ -155,31 +172,26 @@ contract Staker is Ownable {
         return stakedBalances[_user];
     }
 
-    function awardStakedBalance(address payable _to)
-        public
-        onlyOwner
-        onlyWhenCompleted
-    {
-        uint256 balance = address(completionContract).balance;
-        completionContract.transferStakedBalance(_to);
-        status = StakingStatus.AWARDED;
-
-        emit Awarded(_to, balance);
-    }
-
-    function restartStaking() public onlyOwner {
-        require(
-            status == StakingStatus.AWARDED || status == StakingStatus.CLOSED,
-            "staking must have been awarded or is closed"
-        );
+    function restartStaking() public onlyOwner whenNotOpen {
         status = StakingStatus.OPEN;
     }
 
-    function getPastReceivers() public view returns (Receiver[] memory) {
-        return completionContract.getPastReceivers();
+    function redeemStakedAmount() external onlyOwner onlyWhenComplete {
+        address payable owner = payable(owner());
+        _transfer(owner, address(this).balance);
     }
 
-    function getLastReciver() public view returns (Receiver memory) {
-        return completionContract.getLastReciver();
+    function _transfer(address payable _to, uint256 _amount) private {
+        (bool success, ) = _to.call{value: _amount}("");
+        require(success, "failed to send Ether");
+    }
+
+    function terminateContract() external onlyOwner {
+        _bfyToken.transferOwnership(owner());
+        status = StakingStatus.TERMINATED;
+    }
+
+    function tokenBalanceOf(address _account) public view returns (uint256) {
+        return _bfyToken.balanceOf(_account);
     }
 }

@@ -9,7 +9,7 @@ import TabPanel from './components/ui/TabPanel';
 import { ConnectingWallet } from './components/wallet';
 import { StakingDashboard } from './components/staking';
 import { ManagementDashboard } from './components/management';
-import PastRecipients from './components/PastRecipients';
+import StakingRewards from './components/StakingRewards';
 import { AppContext } from './context';
 
 function App() {
@@ -62,11 +62,25 @@ function App() {
     setSelectedTabIndex(newValue);
   };
 
-  let theme = createTheme();
+  const theme = createTheme({
+    palette: {
+      mode: 'dark',
+      primary: {
+        main: '#66afff',
+      },
+      secondary: {
+        main: '#f50057',
+      },
+      background: {
+        default: '#0a1929',
+        paper: '#001e3c',
+      },
+    },
+  });
 
   return (
     <ThemeProvider theme={theme}>
-      <Container component="main" maxWidth="xs" sx={{ backgroundColor: "#f3f3f3" }}>
+      <Container component="main" maxWidth="xs" sx={{ backgroundColor: "#001E3C" }}>
         <CssBaseline />
         <Box sx={{ marginTop: 2, py: 2 }}>
           {!isApplicationLoaded() && <ConnectingWallet />}
@@ -75,18 +89,18 @@ function App() {
               <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
                 <Tabs value={selectedTabIndex} onChange={handleTabChange} aria-label="staking dapp tabs">
                   <Tab label="Staking" {...a11yProps(0)} />
-                  <Tab label="Management" {...a11yProps(1)} />
-                  <Tab label="Past Recipients" {...a11yProps(2)} />
+                  <Tab label="Rewards" {...a11yProps(1)} />
+                  <Tab label="Management" {...a11yProps(2)} />
                 </Tabs>
               </Box>
               <TabPanel value={selectedTabIndex} index={0}>
                 <StakingDashboard />
               </TabPanel>
               <TabPanel value={selectedTabIndex} index={1}>
-                <ManagementDashboard />
+                <StakingRewards />
               </TabPanel>
               <TabPanel value={selectedTabIndex} index={2}>
-                <PastRecipients />
+                <ManagementDashboard />
               </TabPanel>
             </>
           )}
