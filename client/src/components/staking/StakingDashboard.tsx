@@ -59,7 +59,7 @@ export default function StakingDashboard() {
   };
 
   const stakeAction = (event: React.MouseEvent<HTMLButtonElement>): void => {
-    if (!amount || parseInt(amount) <= 0) {
+    if (!amount || parseFloat(amount) <= 0) {
       openSnackBar('warning', 'please specify an amount more than 0');
       return;
     }
